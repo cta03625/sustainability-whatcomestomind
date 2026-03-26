@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sustainability Thinker — Classroom Quiz</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, set, get, remove, onValue, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyB_QyzXSuwpFXlNb2dIlRS62_6nWhWdlas",
+    authDomain: "tf-scale.firebaseapp.com",
+    databaseURL: "https://tf-scale-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "tf-scale",
+    storageBucket: "tf-scale.firebasestorage.app",
+    messagingSenderId: "171042180564",
+    appId: "1:171042180564:web:4f44588df3ef814f5f9a41"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  const QUIZ_REF = 'quiz/results';
+
+  const questions = [
+    { text:"Your favourite band is touring from overseas. Would you rather…", context:"Think about what matters most to you as a music fan.",
+      options:[{label:"See them live 🎸",text:"Buy a ticket. This is a once-in-a-lifetime show and the experience is worth it.",type:"comfort"},{label:"Skip it 🌍",text:"Skip the show — flying bands across the world creates a huge carbon footprint. Support local acts instead.",type:"eco"}]},
+    { text:"A major arts festival offers you free VIP tickets. But it's known for massive plastic waste. Do you…", context:"Thousands of people attend. It's a huge cultural event in your city.",
+      options:[{label:"Go for it 🎟️",text:"Accept the tickets. You didn't create the waste problem — and you'll make great memories.",type:"comfort"},{label:"Decline ♻️",text:"Turn them down and post about the festival's waste problem to raise awareness.",type:"eco"}]},
+    { text:"You're designing merch for a student art show. Would you rather sell…", context:"You have a tight budget and want to make a good impression.",
+      options:[{label:"Cheap fast fashion 👕",text:"Affordable printed tees from a fast fashion supplier — everyone can buy one.",type:"comfort"},{label:"Eco alternatives 🌱",text:"Tote bags made from recycled fabric — fewer sold, but lower environmental impact.",type:"eco"}]},
+    { text:"A new mural is planned for your neighbourhood. Would you rather it be…", context:"The wall is in a prominent public space.",
+      options:[{label:"Famous artist 🌟",text:"A piece by a famous international street artist — it'll go viral and put your neighbourhood on the map.",type:"comfort"},{label:"Local community 🏘️",text:"A collaborative mural made by local residents reflecting the community's own stories and identity.",type:"eco"}]},
+    { text:"You're organising a school arts event. The cheapest venue has no recycling facilities. Do you…", context:"Budget is tight and the event is next month.",
+      options:[{label:"Book it anyway 📅",text:"Book the cheap venue and manage waste as best you can on the day.",type:"comfort"},{label:"Find an alternative 🔍",text:"Spend more time finding a venue with proper sustainability facilities, even if it delays the event.",type:"eco"}]},
+    { text:"A fashion brand offers to sponsor your art collective — but they're known for unsustainable practices. Would you…", context:"The sponsorship would fully fund your next three projects.",
+      options:[{label:"Take the money 💰",text:"Accept it. You need funding to make art that matters, and you can advocate for change from within.",type:"comfort"},{label:"Decline the deal 🚫",text:"Reject the sponsorship. Your art collective's values shouldn't be compromised by who funds you.",type:"eco"}]},
+    { text:"You discover your favourite musician streams concerts using non-renewable energy. Do you…", context:"Their music has always meant a lot to you.",
+      options:[{label:"Keep streaming 🎧",text:"Keep streaming. One fan changing habits won't make a difference at this scale.",type:"comfort"},{label:"Take action 📢",text:"Write to the platform and the artist asking them to commit to renewable energy sources.",type:"eco"}]}
+  ];
+
+  const profiles = [
+    {range:[0,1], emoji:"🎭", title:"Experience-First Thinker", color:"#C4622D"},
+    {range:[2,3], emoji:"⚖️", title:"Pragmatic Balancer", color:"#D4A849"},
+    {range:[4,5], emoji:"🌱", title:"Conscious Creator", color:"#4A7C59"},
+    {range:[6,7], emoji:"🌍", title:"Sustainability Champion", color:"#2D4A2D"}
+  ];
+
+  const profileDescs = [
+    "You prioritise the moment and the memory. Art and culture are about human connection. The challenge: start noticing the hidden costs behind the experiences you love.",
+    "You're aware of environmental issues but weigh them against real constraints — budget, access, experience. With a few habit shifts, you could become a genuine advocate.",
+    "You're tuned in to the impact of the arts and willing to make sacrifices for it — sometimes. You see the tension as worth wrestling with. Keep pushing.",
+    "You consistently put environmental values at the centre of your cultural choices. You're the kind of thinker the arts world needs."
+  ];
+
+  const avatarColors = ["#4A7C59","#C4622D","#D4A849","#2D4A2D","#7B6FA0","#2E86AB","#A23B72","#F18F01","#C73E1D","#3B1F2B","#44BBA4","#E94F37"];
+
+  let studentName = '';
+  let currentQ = 0;
+  let ecoScore = 0;
+
+  function hashCode(str) { let h=0; for(let i=0;i<str.length;i++) h=(Math.imul(31,h)+str.charCodeAt(i))|0; return h; }
+
+  window.showMode = function() { hide('studentScreen'); hide('dashScreen'); show('modeScreen'); }
+  window.showNameScreen = function() { hide('modeScreen'); show('studentScreen'); document.getElementById('nameInput').focus(); }
+
+  window.showDashboard = function() {
+    hide('modeScreen'); show('dashScreen');
+    document.getElementById('mainContainer').style.maxWidth = '1000px';
+    onValue(ref(db, QUIZ_REF), (snapshot) => {
+      const results = snapshot.val() || {};
+      renderDashboard(results);
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const inp = document.getElementById('nameInput');
+    if (inp) inp.addEventListener('input', function() {
+      document.getElementById('goBtn').disabled = this.value.trim().length < 2;
+    });
+  });
+
+  window.startQuiz = function() {
+    studentName = document.getElementById('nameInput').value.trim();
+    if (studentName.length < 2) return;
+    currentQ = 0; ecoScore = 0;
+    hide('studentScreen'); show('quizScreen');
+    loadQuestion();
+  }
+
+  function loadQuestion() {
+    const q = questions[currentQ];
+    document.getElementById('qCounter').innerHTML = `Question ${currentQ+1} of ${questions.length} <span class="q-name-badge">👤 ${studentName}</span>`;
+    document.getElementById('progressFill').style.width = `${(currentQ/questions.length)*100}%`;
+    document.getElementById('qText').textContent = q.text;
+    document.getElementById('qContext').textContent = q.context;
+    const grid = document.getElementById('optionsGrid');
+    grid.innerHTML = '';
+    q.options.forEach((opt, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'opt-btn';
+      btn.innerHTML = `<div class="opt-letter">${['A','B'][i]}</div><div class="opt-label">${opt.label}</div><div class="opt-text">${opt.text}</div>`;
+      btn.onclick = () => pick(opt, btn);
+      grid.appendChild(btn);
+    });
+  }
+
+  function pick(opt, btn) {
+    document.querySelectorAll('.opt-btn').forEach(b => b.style.pointerEvents='none');
+    btn.classList.add(opt.type==='eco'?'picked-eco':'picked-comfort');
+    if (opt.type==='eco') ecoScore++;
+    setTimeout(() => { currentQ++; if (currentQ<questions.length) loadQuestion(); else finishQuiz(); }, 550);
+  }
+
+  async function finishQuiz() {
+    const profile = profiles.find(p => ecoScore>=p.range[0] && ecoScore<=p.range[1]);
+    const profileIdx = profiles.indexOf(profile);
+    const comfortScore = questions.length - ecoScore;
+    const ecoPercent = Math.round((ecoScore/questions.length)*100);
+    const color = avatarColors[Math.abs(hashCode(studentName)) % avatarColors.length];
+
+    try {
+      await set(ref(db, `${QUIZ_REF}/${studentName.replace(/[.#$[\]]/g,'_')}`), {
+        name: studentName, ecoScore, comfortScore, profileIdx,
+        profileTitle: profile.title, profileEmoji: profile.emoji,
+        color, timestamp: Date.now()
+      });
+    } catch(e) { console.warn('Save failed:', e); }
+
+    hide('quizScreen'); show('resultScreen');
+    const rs = document.getElementById('resultScreen');
+    rs.innerHTML = `
+      <span class="result-emoji">${profile.emoji}</span>
+      <h2 class="result-title">${profile.title}</h2>
+      <p class="result-sub">You chose the eco option ${ecoScore} out of ${questions.length} times, ${studentName}.</p>
+      <div class="score-card">
+        <div class="meter-labels"><span class="eco-lbl">🌱 Eco-conscious</span><span class="comfort-lbl">Experience-first 🎭</span></div>
+        <div class="meter-track"><div class="meter-fill" id="mFill" style="width:0%"></div></div>
+        <div class="score-nums">
+          <div class="snum eco"><span class="n">${ecoScore}</span><div class="d">Eco choices</div></div>
+          <div class="snum comfort"><span class="n">${comfortScore}</span><div class="d">Experience choices</div></div>
+        </div>
+      </div>
+      <div class="profile-card">
+        <h3>${profile.emoji} ${profile.title}</h3>
+        <p>${profileDescs[profileIdx]}</p>
+      </div>
+      <p class="waiting-note">✅ Your result has been saved. Look up at the class dashboard to see where you land!</p>
+    `;
+    setTimeout(() => { const f=document.getElementById('mFill'); if(f) f.style.width=ecoPercent+'%'; }, 300);
+  }
+
+  function renderDashboard(results) {
+    const students = Object.values(results).sort((a,b) => b.ecoScore-a.ecoScore);
+    const total = students.length;
+    const avgEco = total ? (students.reduce((s,r)=>s+r.ecoScore,0)/total).toFixed(1) : '–';
+    const champCount = students.filter(s=>s.profileIdx===3).length;
+    const grouped = [0,1,2,3].map(i => ({...profiles[i], students: students.filter(s=>s.profileIdx===i)}));
+
+    document.getElementById('dashScreen').innerHTML = `
+      <div class="dash-header">
+        <div>
+          <div class="dash-title">🌿 Class Sustainability Spectrum</div>
+          <div class="dash-count"><span class="live-dot"></span>${total} student${total!==1?'s':''} completed · live</div>
+        </div>
+        <div class="dash-controls">
+          <button class="dash-btn refresh" onclick="window.location.reload()">↻ Refresh</button>
+          <button class="dash-btn clear" id="clearBtn" onclick="clearResults()">Clear All</button>
+          <button class="dash-btn home" onclick="goHome()">← Home</button>
+        </div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-box"><span class="stat-n">${total}</span><div class="stat-d">Responses</div></div>
+        <div class="stat-box"><span class="stat-n">${avgEco}</span><div class="stat-d">Avg eco score</div></div>
+        <div class="stat-box"><span class="stat-n">${champCount}</span><div class="stat-d">Champions 🌍</div></div>
+      </div>
+
+      ${total===0 ? `<div class="empty-state"><span class="e-icon">📱</span><p>Waiting for students to complete the quiz…</p></div>` : `
+        <div class="spectrum-wrap">
+          <div class="spectrum-title">Where does everyone land?</div>
+          <div class="spectrum-sub">Hover over an avatar to see the student's name and score.</div>
+          <div class="spectrum-track">
+            ${students.map(s => {
+              const pct = (s.ecoScore/7)*100;
+              const leftPct = Math.max(2, Math.min(94, pct));
+              const initials = s.name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+              return `<div class="student-dot" style="left:${leftPct}%">
+                <div class="dot-avatar" style="background:${s.color}">
+                  ${initials}
+                  <div class="dot-tooltip">${s.name} · ${s.ecoScore}/7 eco</div>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+          <div class="spectrum-labels">
+            <span>🎭 Experience-First</span><span>⚖️ Balanced</span><span>🌍 Eco Champion</span>
+          </div>
+        </div>
+        <div class="groups-grid">
+          ${grouped.map(g=>`
+            <div class="group-card">
+              <div class="group-card-header">
+                <span class="group-emoji">${g.emoji}</span>
+                <div><div class="group-name">${g.title}</div><div class="group-count">${g.students.length} student${g.students.length!==1?'s':''}</div></div>
+              </div>
+              ${g.students.length===0?`<span style="font-size:12px;color:#ddd">None yet</span>`:
+                g.students.map(s=>`<span class="student-chip" style="background:${s.color}">${s.name}</span>`).join('')}
+            </div>`).join('')}
+        </div>
+      `}
+    `;
+  }
+
+  window.clearResults = async function() {
+    const btn = document.getElementById('clearBtn');
+    if (!btn) return;
+    if (btn.dataset.confirming !== 'true') {
+      btn.dataset.confirming = 'true';
+      btn.textContent = '⚠️ Tap again to confirm';
+      btn.style.borderColor = '#C4622D'; btn.style.color = '#E8936A';
+      setTimeout(() => { btn.dataset.confirming='false'; btn.textContent='Clear All'; btn.style.borderColor=''; btn.style.color=''; }, 3000);
+      return;
+    }
+    btn.dataset.confirming = 'false';
+    try { await remove(ref(db, QUIZ_REF)); } catch(e) { console.error(e); }
+  }
+
+  window.goHome = function() {
+    document.getElementById('mainContainer').style.maxWidth = '780px';
+    hide('dashScreen'); show('modeScreen');
+  }
+
+  window.show = function(id) { document.getElementById(id).classList.remove('hidden'); }
+  window.hide = function(id) { document.getElementById(id).classList.add('hidden'); }
+</script>
+<style>
+  :root { --earth:#2D4A2D; --moss:#4A7C59; --sage:#8FB89A; --sand:#E8DCC8; --cream:#F5F0E8; --terracotta:#C4622D; --gold:#D4A849; --charcoal:#1A1A1A; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'DM Sans',sans-serif; background:var(--cream); min-height:100vh; overflow-x:hidden; }
+  .bg-texture { position:fixed; inset:0; background-image:radial-gradient(circle at 15% 25%,rgba(75,124,89,0.07) 0%,transparent 45%),radial-gradient(circle at 85% 75%,rgba(196,98,45,0.05) 0%,transparent 45%); pointer-events:none; z-index:0; }
+  .container { position:relative; z-index:1; max-width:780px; margin:0 auto; padding:36px 24px; }
+  .mode-screen { text-align:center; padding:60px 20px; animation:fadeUp 0.7s ease; }
+  .mode-screen .leaf { font-size:60px; display:block; margin-bottom:20px; animation:sway 3s ease-in-out infinite; }
+  @keyframes sway { 0%,100%{transform:rotate(-5deg)} 50%{transform:rotate(5deg)} }
+  .mode-screen h1 { font-family:'Playfair Display',serif; font-size:clamp(30px,5vw,48px); color:var(--earth); line-height:1.1; margin-bottom:12px; }
+  .mode-screen h1 em { color:var(--moss); font-style:italic; }
+  .mode-screen p { font-size:16px; color:#666; margin-bottom:40px; font-weight:300; }
+  .mode-buttons { display:flex; gap:16px; justify-content:center; flex-wrap:wrap; }
+  .mode-btn { padding:18px 36px; border-radius:60px; font-family:'DM Sans',sans-serif; font-size:16px; font-weight:600; cursor:pointer; border:none; transition:all 0.3s ease; }
+  .mode-btn.student { background:var(--earth); color:var(--cream); }
+  .mode-btn.student:hover { background:var(--moss); transform:translateY(-2px); box-shadow:0 8px 24px rgba(45,74,45,0.3); }
+  .mode-btn.facilitator { background:transparent; border:2px solid var(--earth); color:var(--earth); }
+  .mode-btn.facilitator:hover { background:var(--sand); transform:translateY(-2px); }
+  .mode-note { font-size:13px; color:#aaa; margin-top:20px; }
+  .name-screen { text-align:center; padding:60px 20px; }
+  .name-screen h2 { font-family:'Playfair Display',serif; font-size:clamp(26px,4vw,38px); color:var(--earth); margin-bottom:12px; }
+  .name-screen p { font-size:15px; color:#777; margin-bottom:36px; font-weight:300; }
+  .name-input { display:block; width:100%; max-width:360px; margin:0 auto 20px; padding:16px 24px; font-family:'DM Sans',sans-serif; font-size:18px; border:2px solid var(--sand); border-radius:60px; background:white; color:var(--charcoal); outline:none; text-align:center; transition:border-color 0.3s; }
+  .name-input:focus { border-color:var(--moss); }
+  .go-btn { background:var(--earth); color:var(--cream); border:none; padding:16px 44px; font-family:'DM Sans',sans-serif; font-size:17px; font-weight:600; border-radius:60px; cursor:pointer; transition:all 0.3s ease; }
+  .go-btn:hover { background:var(--moss); transform:translateY(-2px); }
+  .go-btn:disabled { opacity:0.4; cursor:not-allowed; transform:none; }
+  .screen { animation:fadeUp 0.5s ease; }
+  .progress-wrap { background:var(--sand); border-radius:20px; height:7px; margin-bottom:36px; overflow:hidden; }
+  .progress-fill { height:100%; background:linear-gradient(90deg,var(--moss),var(--gold)); border-radius:20px; transition:width 0.5s ease; }
+  .q-counter { font-size:12px; font-weight:600; color:var(--moss); text-transform:uppercase; letter-spacing:2px; margin-bottom:14px; }
+  .q-name-badge { float:right; font-size:12px; color:#aaa; font-weight:400; text-transform:none; letter-spacing:0; }
+  .q-text { font-family:'Playfair Display',serif; font-size:clamp(20px,3.5vw,28px); color:var(--charcoal); line-height:1.3; margin-bottom:8px; }
+  .q-context { font-size:13px; color:#999; margin-bottom:30px; font-style:italic; }
+  .options-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media(max-width:520px) { .options-grid { grid-template-columns:1fr; } }
+  .opt-btn { background:white; border:2px solid var(--sand); border-radius:14px; padding:22px 18px; cursor:pointer; text-align:left; transition:all 0.25s ease; }
+  .opt-btn:hover { border-color:var(--moss); transform:translateY(-3px); box-shadow:0 8px 20px rgba(74,124,89,0.13); }
+  .opt-btn.picked-eco { border-color:var(--moss); background:linear-gradient(135deg,#eef6f1,white); pointer-events:none; }
+  .opt-btn.picked-comfort { border-color:var(--terracotta); background:linear-gradient(135deg,#fdf3ed,white); pointer-events:none; }
+  .opt-btn.dimmed { opacity:0.45; pointer-events:none; }
+  .opt-letter { width:30px; height:30px; border-radius:50%; background:var(--sand); text-align:center; line-height:30px; font-size:12px; font-weight:700; color:var(--earth); margin-bottom:10px; }
+  .opt-label { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:1px; color:var(--sage); margin-bottom:5px; }
+  .opt-text { font-size:14px; color:var(--charcoal); line-height:1.4; }
+  .result-screen { text-align:center; }
+  .result-emoji { font-size:68px; display:block; margin-bottom:18px; animation:pop 0.5s ease; }
+  @keyframes pop { 0%{transform:scale(0);opacity:0} 70%{transform:scale(1.2)} 100%{transform:scale(1);opacity:1} }
+  .result-title { font-family:'Playfair Display',serif; font-size:clamp(26px,4vw,38px); color:var(--earth); margin-bottom:8px; }
+  .result-sub { font-size:15px; color:#888; font-weight:300; margin-bottom:32px; }
+  .score-card { background:white; border-radius:18px; padding:28px; box-shadow:0 4px 20px rgba(0,0,0,0.06); margin-bottom:24px; }
+  .meter-labels { display:flex; justify-content:space-between; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:10px; }
+  .eco-lbl { color:var(--moss); } .comfort-lbl { color:var(--terracotta); }
+  .meter-track { height:14px; background:#f0e8df; border-radius:20px; overflow:hidden; margin-bottom:18px; }
+  .meter-fill { height:100%; border-radius:20px; background:linear-gradient(90deg,var(--moss),var(--gold)); transition:width 1.2s cubic-bezier(0.34,1.56,0.64,1); }
+  .score-nums { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .snum { text-align:center; padding:14px; border-radius:10px; }
+  .snum.eco { background:rgba(74,124,89,0.08); } .snum.comfort { background:rgba(196,98,45,0.08); }
+  .snum .n { font-family:'Playfair Display',serif; font-size:36px; font-weight:700; display:block; }
+  .snum.eco .n { color:var(--moss); } .snum.comfort .n { color:var(--terracotta); }
+  .snum .d { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:1px; color:#bbb; }
+  .profile-card { background:var(--earth); color:var(--cream); border-radius:18px; padding:28px; margin-bottom:24px; text-align:left; }
+  .profile-card h3 { font-family:'Playfair Display',serif; font-size:20px; color:var(--gold); margin-bottom:10px; }
+  .profile-card p { font-size:14px; line-height:1.7; font-weight:300; opacity:0.9; }
+  .waiting-note { font-size:14px; color:#aaa; margin-top:16px; font-style:italic; }
+  .dash-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:32px; flex-wrap:wrap; gap:12px; }
+  .dash-title { font-family:'Playfair Display',serif; font-size:clamp(22px,3vw,32px); color:var(--earth); }
+  .dash-count { font-size:14px; color:#999; font-weight:300; display:flex; align-items:center; gap:6px; }
+  .live-dot { width:8px; height:8px; border-radius:50%; background:#4CAF50; animation:pulse 2s infinite; display:inline-block; }
+  .dash-controls { display:flex; gap:10px; flex-wrap:wrap; }
+  .dash-btn { padding:10px 20px; border-radius:30px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:600; cursor:pointer; border:none; transition:all 0.3s; }
+  .dash-btn.refresh { background:var(--moss); color:white; }
+  .dash-btn.refresh:hover { background:var(--earth); }
+  .dash-btn.clear { background:transparent; border:2px solid #ddd; color:#999; }
+  .dash-btn.clear:hover { border-color:var(--terracotta); color:var(--terracotta); }
+  .dash-btn.home { background:transparent; border:2px solid #ddd; color:#999; }
+  .dash-btn.home:hover { border-color:var(--earth); color:var(--earth); }
+  .stats-row { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:28px; }
+  .stat-box { background:white; border-radius:14px; padding:20px; text-align:center; box-shadow:0 4px 16px rgba(0,0,0,0.05); }
+  .stat-n { font-family:'Playfair Display',serif; font-size:36px; font-weight:700; color:var(--earth); display:block; }
+  .stat-d { font-size:11px; color:#bbb; font-weight:600; text-transform:uppercase; letter-spacing:1px; margin-top:4px; }
+  .spectrum-wrap { background:white; border-radius:20px; padding:32px; box-shadow:0 4px 20px rgba(0,0,0,0.06); margin-bottom:28px; }
+  .spectrum-title { font-family:'Playfair Display',serif; font-size:20px; color:var(--charcoal); margin-bottom:6px; }
+  .spectrum-sub { font-size:13px; color:#aaa; margin-bottom:24px; }
+  .spectrum-track { position:relative; height:56px; background:linear-gradient(90deg,rgba(74,124,89,0.15),rgba(212,168,73,0.15),rgba(196,98,45,0.15)); border-radius:12px; margin-bottom:10px; overflow:visible; }
+  .spectrum-labels { display:flex; justify-content:space-between; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:1.5px; color:#bbb; }
+  .student-dot { position:absolute; top:50%; transform:translateY(-50%); transition:left 0.8s cubic-bezier(0.34,1.56,0.64,1); }
+  .dot-avatar { width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; color:white; border:3px solid white; box-shadow:0 3px 10px rgba(0,0,0,0.2); cursor:pointer; transition:transform 0.2s; position:relative; }
+  .dot-avatar:hover { transform:scale(1.2); z-index:10; }
+  .dot-tooltip { position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%); background:var(--charcoal); color:white; font-size:11px; font-weight:500; padding:6px 10px; border-radius:8px; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity 0.2s; z-index:20; }
+  .dot-avatar:hover .dot-tooltip { opacity:1; }
+  .groups-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:16px; margin-bottom:28px; }
+  .group-card { background:white; border-radius:16px; padding:20px; box-shadow:0 4px 16px rgba(0,0,0,0.05); }
+  .group-card-header { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .group-emoji { font-size:28px; }
+  .group-name { font-family:'Playfair Display',serif; font-size:15px; color:var(--earth); line-height:1.2; }
+  .group-count { font-size:12px; color:#bbb; }
+  .student-chip { display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:20px; font-size:12px; font-weight:500; margin:3px; color:white; }
+  .empty-state { text-align:center; padding:60px 20px; color:#ccc; }
+  .e-icon { font-size:48px; margin-bottom:16px; display:block; }
+  .hidden { display:none !important; }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+</style>
+</head>
+<body>
+<div class="bg-texture"></div>
+<div class="container" id="mainContainer">
+
+  <div class="mode-screen screen" id="modeScreen">
+    <span class="leaf">🌿</span>
+    <h1>Are You a <em>Sustainability</em> Thinker?</h1>
+    <p>A classroom quiz — pick your role below.</p>
+    <div class="mode-buttons">
+      <button class="mode-btn student" onclick="showNameScreen()">🎓 I'm a Student</button>
+      <button class="mode-btn facilitator" onclick="showDashboard()">📊 Facilitator Dashboard</button>
+    </div>
+    <p class="mode-note">Students: open this page on your phone and enter your name to begin.</p>
+  </div>
+
+  <div class="name-screen screen hidden" id="studentScreen">
+    <span style="font-size:52px;display:block;margin-bottom:20px">👋</span>
+    <h2>What's your name?</h2>
+    <p>Enter your name to start the quiz. Your result will appear on the class dashboard.</p>
+    <input class="name-input" id="nameInput" type="text" placeholder="Your name..." maxlength="24" onkeyup="if(event.key==='Enter')startQuiz()">
+    <br>
+    <button class="go-btn" id="goBtn" onclick="startQuiz()" disabled>Start Quiz →</button>
+  </div>
+
+  <div class="screen hidden" id="quizScreen">
+    <div class="progress-wrap"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    <div class="q-counter" id="qCounter">Question 1 of 7</div>
+    <div class="q-text" id="qText"></div>
+    <div class="q-context" id="qContext"></div>
+    <div class="options-grid" id="optionsGrid"></div>
+  </div>
+
+  <div class="result-screen screen hidden" id="resultScreen"></div>
+  <div class="screen hidden" id="dashScreen"></div>
+
+</div>
+</body>
+</html>
